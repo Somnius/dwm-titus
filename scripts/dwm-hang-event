@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Called by dwm when a window stops answering _NET_WM_PING ("hung") and when it
+# answers again ("recovered"). Arguments come from the client: treat them as
+# data only.
+set -euo pipefail
+
+state=${1:-}
+window=${2:-}
+pid=${3:-0}
+class=${4:-}
+title=${5:-}
+
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus
+ignore_file=$config_dir/hang-ignore
+runtime=${XDG_RUNTIME_DIR:-/run/user/$UID}/dwm-titus/hang
+
+[[ $window =~ ^0x[0-9a-f]+$ ]] || exit 2
+[[ $pid =~ ^[0-9]+$ ]] || pid=0
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+mkdir -p "$runtime"
+record=$runtime/$window
+
+ignored() {
+	local line
+	[[ -n $class && -f $ignore_file ]] || return 1
+	while IFS= read -r line; do
+		line=${line%%#*}
+		line=${line//[[:space:]]/}
+		[[ -n $line && ${line,,} == "${class,,}" ]] && return 0
+	done <"$ignore_file"
+	return 1
+}
+
+close_notification() {
+	local id waiter
+	[[ -f $record ]] || return 0
+	read -r id waiter <"$record" || true
+	rm -f "$record"
+	[[ ${waiter:-} =~ ^[0-9]+$ ]] && kill "$waiter" 2>/dev/null
+	[[ ${id:-} =~ ^[0-9]+$ ]] || return 0
+	gdbus call --session --dest org.freedesktop.Notifications \
+		--object-path /org/freedesktop/Notifications \
+		--method org.freedesktop.Notifications.CloseNotification "$id" >/dev/null 2>&1 || true
+}
+
+case $state in
+recovered)
+	close_notification
+	exit 0
+	;;
+hung) ;;
+*) exit 2 ;;
+esac
+
+ignored && exit 0
+# One notification per hang, even if dwm reports it again.
+[[ -f $record ]] && exit 0
+
+name=${class:-${title:-Window}}
+name=${name//[$'\t\r\n']/ }
+name=${name:0:60}
+
+if [[ -n $(dwm-agent default 2>/dev/null) ]]; then
+	diagnose_label="Diagnose with AI"
+else
+	diagnose_label="Set up AI diagnosis"
+fi
+
+fifo=$runtime/$window.out
+rm -f "$fifo"
+mkfifo "$fifo"
+notify-send --app-name=dwm-titus --urgency=critical --print-id \
+	--action=diagnose="$diagnose_label" --action=kill="Force quit" --action=wait=Wait \
+	"$name is not responding" \
+	"It has not answered for 10 seconds. It may still recover." >"$fifo" 2>/dev/null &
+waiter=$!
+exec 3<"$fifo"
+rm -f "$fifo"
+read -r id <&3 || id=
+printf '%s %s\n' "${id:-0}" "$waiter" >"$record"
+read -r action <&3 || action=
+exec 3<&-
+wait "$waiter" 2>/dev/null || true
+rm -f "$record"
+
+case $action in
+diagnose)
+	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" "$title" >/dev/null 2>&1
+	;;
+kill)
+	# XKillClient through xdotool closes the client's X connection; it works
+	# for sandboxed apps where the PID would point at the wrong process.
+	xdotool windowkill "$window" 2>/dev/null || true
+	;;
+esac
