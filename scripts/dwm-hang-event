@@ -20,15 +20,24 @@ command -v notify-send >/dev/null 2>&1 || exit 0
 
 mkdir -p "$runtime"
 record=$runtime/$window
+# Start time (field 22 of /proc/<pid>/stat). The name in field 2 can contain
+# spaces and parentheses, so read everything after its closing parenthesis.
+start_time_of() {
+	local stat fields
+	stat=$(cat "/proc/$1/stat" 2>/dev/null) || return 0
+	read -ra fields <<<"${stat##*) }"
+	printf '%s' "${fields[19]:-}"
+}
+
 # dwm starts a handler per event and they can run out of order, so each one
 # notes when dwm started it (process start time, in clock ticks). recovered and
 # gone leave that time here; a hung handler started before it stands down.
 closed_marker=$runtime/$window.closed
-self_start=$(awk '{print $22}' /proc/$$/stat)
+self_start=$(start_time_of $$)
 
 same_process() {
 	local now
-	now=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || now=''
+	now=$(start_time_of "$pid")
 	[[ -n $now && $now == "$start_time" ]] && echo yes || echo no
 }
 
@@ -95,33 +104,38 @@ fi
 # reused the PID while the notification was waiting.
 start_time=''
 if ((pid > 0)) && [[ -O /proc/$pid ]]; then
-	start_time=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || start_time=''
+	start_time=$(start_time_of "$pid")
 fi
 
-fifo=$runtime/$window.out
-rm -f "$fifo"
-mkfifo "$fifo"
+# notify-send prints the notification id first and, after the click, the
+# action. A plain file (not a FIFO) means killing it can never leave this
+# handler blocked.
+out=$runtime/$window.out
+: >"$out"
 notify-send --app-name=dwm-titus --urgency=critical --print-id \
 	--action=diagnose="$diagnose_label" --action=kill="Force quit" --action=wait=Wait \
 	"$name is not responding" \
-	"It has not answered for 10 seconds. It may still recover." >"$fifo" 2>/dev/null &
+	"It has not answered for 10 seconds. It may still recover." >"$out" 2>/dev/null &
 waiter=$!
 printf '0 %s\n' "$waiter" >"$record"
-exec 3<"$fifo"
-rm -f "$fifo"
-read -r id <&3 || id=''
+id=''
+for _ in {1..50}; do
+	read -r id <"$out" || id=''
+	[[ -n $id ]] && break
+	kill -0 "$waiter" 2>/dev/null || break
+	sleep 0.1
+done
 [[ -f $record ]] && printf '%s %s\n' "${id:-0}" "$waiter" >"$record"
 # The window answered while the notification was being posted.
 if recovered_since_hung; then
-	rm -f "$record"
+	rm -f "$record" "$out"
 	kill "$waiter" 2>/dev/null || true
 	close_id "$id"
 	exit 0
 fi
-read -r action <&3 || action=
-exec 3<&-
 wait "$waiter" 2>/dev/null || true
-rm -f "$record"
+action=$(sed -n 2p "$out")
+rm -f "$record" "$out"
 
 case $action in
 diagnose)
