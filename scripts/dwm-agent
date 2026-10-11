@@ -91,9 +91,17 @@ install_agent() {
 	agent_present "$agent" || die "$(agent_name "$agent") did not install"
 }
 
+# Settings waits for the whole list, so one agent that hangs must not block
+# it: every probe gets a time limit and reports unknown when it runs out.
+probe_seconds=${DWM_AGENT_PROBE_SECONDS:-10}
+
+probe() {
+	timeout --kill-after=2 "$probe_seconds" "$@"
+}
+
 agent_version() {
 	use_mise_path
-	"$1" --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true
+	probe "$1" --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true
 }
 
 # Whether the agent has credentials. Each agent keeps them differently:
@@ -104,12 +112,22 @@ agent_version() {
 #   claude    `claude auth status` exits 0 when logged in
 #   cursor    `cursor-agent status` prints "Logged in as ..."
 #   hermes    `hermes auth list` lists "<provider> (N credentials):" blocks
+# yes for exit 0, unknown when the probe timed out, otherwise no.
+probe_result() {
+	case $1 in
+	0) echo yes ;;
+	124 | 137) echo unknown ;;
+	*) echo no ;;
+	esac
+}
+
 agent_signed_in() {
-	local count output
+	local count output status=0
 	use_mise_path
 	case $1 in
 	codex)
-		if codex login status >/dev/null 2>&1; then echo yes; else echo no; fi
+		probe codex login status >/dev/null 2>&1 && status=0 || status=$?
+		probe_result "$status"
 		;;
 	opencode)
 		count=$(jq -r 'length' "${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json" 2>/dev/null) || count=0
@@ -123,16 +141,25 @@ agent_signed_in() {
 		fi
 		;;
 	claude)
-		if claude auth status >/dev/null 2>&1; then echo yes; else echo no; fi
+		probe claude auth status >/dev/null 2>&1 && status=0 || status=$?
+		probe_result "$status"
 		;;
 	# Read the whole output first: `hermes auth list` exits nonzero even when
 	# it lists credentials, which pipefail would count as a failed check.
 	cursor-agent)
-		output=$(cursor-agent status 2>/dev/null) || true
+		output=$(probe cursor-agent status 2>/dev/null) || status=$?
+		((${status:-0} == 124 || ${status:-0} == 137)) && {
+			echo unknown
+			return
+		}
 		if grep -q 'Logged in as' <<<"$output"; then echo yes; else echo no; fi
 		;;
 	hermes)
-		output=$(hermes auth list 2>/dev/null) || true
+		output=$(probe hermes auth list 2>/dev/null) || status=$?
+		((${status:-0} == 124 || ${status:-0} == 137)) && {
+			echo unknown
+			return
+		}
 		if grep -qE '\([0-9]+ credentials?\)' <<<"$output"; then echo yes; else echo no; fi
 		;;
 	*) echo unknown ;;
