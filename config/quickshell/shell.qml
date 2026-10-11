@@ -197,6 +197,7 @@ ShellRoot {
     AgentSettingsModel {
         id: agentModel
         settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "agent"
+        onTerminalOpened: settingsModel.close()
     }
 
     AppearanceModel {

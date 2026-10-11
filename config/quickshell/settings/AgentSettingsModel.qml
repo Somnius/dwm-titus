@@ -10,6 +10,10 @@ Scope {
     id: root
 
     property bool settingsVisible: false
+
+    // The Settings window stays above other windows, so a terminal opened for
+    // install or sign-in (and the browser it starts) would land behind it.
+    signal terminalOpened
     property bool listLoaded: false
     property bool statusLoaded: false
     property bool refreshQueued: false
@@ -88,6 +92,7 @@ Scope {
     function openTerminal(action, name) {
         root.message = "";
         Quickshell.execDetached(Commands.agentTerminalCommand(action, [name]));
+        root.terminalOpened();
     }
 
     function readFinished() {

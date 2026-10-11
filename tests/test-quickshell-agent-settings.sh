@@ -127,4 +127,8 @@ list_env default opencode
 list_env list | grep -Fqx "$(printf 'agent\topencode\tOpenCode\tyes\t1.2.3\tno\tyes')"
 list_env list | awk -F '\t' '$2 != "opencode" && $7 != "no" { exit 1 }'
 
+# Install and sign-in terminals must not open behind the Settings window.
+grep -Fq 'root.terminalOpened();' "$repo/config/quickshell/settings/AgentSettingsModel.qml"
+grep -Fq 'onTerminalOpened: settingsModel.close()' "$repo/config/quickshell/shell.qml"
+
 printf 'Quickshell AI assistant settings contract: PASS\n'
