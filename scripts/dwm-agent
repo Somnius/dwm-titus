@@ -334,7 +334,11 @@ launch() {
 
 	case $agent in
 	codex)
-		command=(codex --approve-for-me)
+		# --approve-for-me runs commands in Codex's workspace-write sandbox,
+		# which hides the network, D-Bus and X11 from the diagnosis. Allow
+		# network access there; process and mount views stay sandboxed, which
+		# the skill tells the agent to account for.
+		command=(codex --approve-for-me -c sandbox_workspace_write.network_access=true)
 		[[ -n $prompt ]] && command+=(-- "$prompt")
 		;;
 	opencode)

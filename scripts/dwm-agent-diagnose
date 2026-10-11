@@ -82,7 +82,7 @@ What systemd-coredump recorded:
   PID:     $pid
   binary:  ${exe:-unknown}
   signal:  ${signal:-unknown}
-  time:    ${when:-unknown}
+  core recorded: ${when:-unknown}
 EOF
 	footer
 }
