@@ -194,6 +194,11 @@ ShellRoot {
         id: autostartModel
     }
 
+    AgentSettingsModel {
+        id: agentModel
+        settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "agent"
+    }
+
     AppearanceModel {
         id: appearanceModel
     }
@@ -1250,6 +1255,7 @@ ShellRoot {
         powerMenuModel: powerMenuModel
         defaultsModel: defaultsModel
         autostartModel: autostartModel
+        agentModel: agentModel
         appearanceModel: appearanceModel
         accessibilityModel: accessibilityModel
         notificationModel: notificationModel

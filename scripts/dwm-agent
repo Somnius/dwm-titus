@@ -25,6 +25,7 @@ Usage: dwm-agent [--inline] [--prompt TEXT]
        dwm-agent login [codex|opencode|gemini]
        dwm-agent link-skills
        dwm-agent status
+       dwm-agent set <crash-notifications|hang-detection> <on|off>
 EOF
 }
 
@@ -212,6 +213,31 @@ status() {
 	printf 'skills\t%s\n' "$([[ -L $skills_target/dwm-titus-debug ]] && echo linked || echo missing)"
 }
 
+set_toggle() {
+	local name=$1 value=$2 file create
+	case $value in
+	on | off) ;;
+	*) die "value must be on or off, not '$value'" ;;
+	esac
+	case $name in
+	crash-notifications)
+		file=$crash_off_toggle
+		create=off
+		;;
+	hang-detection)
+		file=$hang_toggle
+		create=on
+		;;
+	*) die "unknown setting '$name' (choose: crash-notifications hang-detection)" ;;
+	esac
+	mkdir -p "$config_dir"
+	if [[ $value == "$create" ]]; then
+		: >"$file"
+	else
+		rm -f "$file"
+	fi
+}
+
 # Agents opened from a notification run unattended, each with its own flag
 # for "don't stop to ask".
 launch() {
@@ -279,5 +305,9 @@ login)
 	;;
 link-skills) link_skills ;;
 status) status ;;
+set)
+	(($# == 3)) || die "usage: dwm-agent set <crash-notifications|hang-detection> <on|off>"
+	set_toggle "$2" "$3"
+	;;
 *) launch "$@" ;;
 esac
