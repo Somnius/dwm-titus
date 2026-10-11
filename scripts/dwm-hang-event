@@ -89,8 +89,22 @@ diagnose)
 	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" "$title" >/dev/null 2>&1
 	;;
 kill)
+	# Remember which process this was before closing the window, so a PID
+	# reused in the meantime is never killed.
+	start_time=
+	if ((pid > 0)) && [[ -O /proc/$pid ]]; then
+		start_time=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || start_time=
+	fi
 	# XKillClient through xdotool closes the client's X connection; it works
 	# for sandboxed apps where the PID would point at the wrong process.
 	xdotool windowkill "$window" 2>/dev/null || true
+	# A process that is truly stuck never notices its connection closing.
+	if [[ -n $start_time ]]; then
+		sleep 5
+		if [[ -O /proc/$pid ]] &&
+			[[ $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) == "$start_time" ]]; then
+			kill -KILL "$pid" 2>/dev/null || true
+		fi
+	fi
 	;;
 esac
