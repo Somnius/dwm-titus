@@ -186,7 +186,10 @@ Flickable {
 
                     Flow {
                         Layout.fillWidth: true
-                        visible: installButton.visible || signInButton.visible || defaultButton.visible
+                        // Decide from the data: a child's visible is false while this Flow is
+                        // hidden, so reading it here would keep the row hidden for good.
+                        visible: !agentCard.modelData.installed || !agentCard.signedIn
+                            || !agentCard.modelData.isDefault
                         spacing: Theme.spacingSm
 
                         ShellButton {
