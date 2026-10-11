@@ -85,6 +85,13 @@ set_default() {
 	mv -f "$agent_file.tmp" "$agent_file"
 }
 
+# Package installation is for Fedora only, like the rest of dwm-titus.
+require_fedora() {
+	local id=''
+	[[ -r /etc/os-release ]] && id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d "\"'")
+	[[ $id == fedora ]] || die "agent installation is supported on Fedora only (found '${id:-unknown}')"
+}
+
 ensure_mise() {
 	command -v mise >/dev/null 2>&1 && return 0
 	cat <<'EOF'
@@ -104,6 +111,7 @@ EOF
 install_agent() {
 	local agent=$1 tool
 	known_agent "$agent" || die "unknown agent '$agent'"
+	require_fedora
 	ensure_mise
 	while IFS= read -r tool; do
 		printf '==> mise use -g %s\n' "$tool"

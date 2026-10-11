@@ -2991,7 +2991,7 @@ hangpong(Window w)
 	}
 }
 
-/* Run dwm-hang-event <hung|recovered> <window> <pid> <class> <title>, next to
+/* Run dwm-hang-event <hung|recovered|gone> <window> <pid> <class> <title>, next to
  * the dwm binary when possible. Arguments go straight to exec, never through
  * a shell, because the title and class come from the client. */
 static void
@@ -4979,6 +4979,11 @@ unmanage(Client *c, int destroyed)
 	Client *top = NULL;
 	XWindowChanges wc;
 
+	/* Withdraw a "not responding" notification for a window that is gone. */
+	if (c->hung) {
+		hangevent(c, "gone");
+		c->hung = c->pingpending = 0;
+	}
 	if (c->swallowing) {
 		unswallow(c);
 		return;

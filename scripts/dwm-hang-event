@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Called by dwm when a window stops answering _NET_WM_PING ("hung") and when it
-# answers again ("recovered"). Arguments come from the client: treat them as
-# data only.
+# Called by dwm when a window stops answering _NET_WM_PING ("hung"), answers
+# again ("recovered"), or is closed while hung ("gone"). Arguments come from the
+# client: treat them as data only.
 set -euo pipefail
 
 state=${1:-}
@@ -20,6 +20,12 @@ command -v notify-send >/dev/null 2>&1 || exit 0
 
 mkdir -p "$runtime"
 record=$runtime/$window
+
+same_process() {
+	local now
+	now=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || now=''
+	[[ -n $now && $now == "$start_time" ]] && echo yes || echo no
+}
 
 ignored() {
 	local line
@@ -45,7 +51,7 @@ close_notification() {
 }
 
 case $state in
-recovered)
+recovered | gone)
 	close_notification
 	exit 0
 	;;
@@ -65,6 +71,13 @@ if [[ -n $(dwm-agent default 2>/dev/null) ]]; then
 	diagnose_label="Diagnose with AI"
 else
 	diagnose_label="Set up AI diagnosis"
+fi
+
+# Remember which process this is now, so Force quit never kills a process that
+# reused the PID while the notification was waiting.
+start_time=''
+if ((pid > 0)) && [[ -O /proc/$pid ]]; then
+	start_time=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || start_time=''
 fi
 
 fifo=$runtime/$window.out
@@ -89,20 +102,13 @@ diagnose)
 	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" "$title" >/dev/null 2>&1
 	;;
 kill)
-	# Remember which process this was before closing the window, so a PID
-	# reused in the meantime is never killed.
-	start_time=
-	if ((pid > 0)) && [[ -O /proc/$pid ]]; then
-		start_time=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) || start_time=
-	fi
 	# XKillClient through xdotool closes the client's X connection; it works
 	# for sandboxed apps where the PID would point at the wrong process.
-	xdotool windowkill "$window" 2>/dev/null || true
+	xdotool windowkill "$window" 2>/dev/null || exit 0
 	# A process that is truly stuck never notices its connection closing.
 	if [[ -n $start_time ]]; then
 		sleep 5
-		if [[ -O /proc/$pid ]] &&
-			[[ $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null) == "$start_time" ]]; then
+		if [[ -O /proc/$pid ]] && [[ $(same_process) == yes ]]; then
 			kill -KILL "$pid" 2>/dev/null || true
 		fi
 	fi

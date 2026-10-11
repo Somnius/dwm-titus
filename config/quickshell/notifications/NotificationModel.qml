@@ -266,7 +266,15 @@ Scope {
             "timestamp": Date.now()
         };
 
-        root.history = [entry].concat(root.history).slice(0, root.maxHistory);
+        const kept = [entry].concat(root.history);
+        root.history = kept.slice(0, root.maxHistory);
+        // An actionable notification pushed out of the history and not on
+        // screen can no longer be answered, so close it instead of keeping it.
+        for (const evicted of kept.slice(root.maxHistory)) {
+            if (root.notifications.some(n => n.key === evicted.key)) continue;
+            const notification = root.actionable[evicted.key];
+            if (notification) notification.dismiss();
+        }
         root.saveHistory();
     }
 
