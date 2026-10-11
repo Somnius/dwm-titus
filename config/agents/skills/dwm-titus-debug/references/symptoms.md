@@ -32,6 +32,7 @@ LightDM session on Fedora; confirm them on the target system.
 | Tearing, black windows, or transparency problems | `dwm-settings-picom status`, picom log | Backend choice (`xrender` vs `glx`), GPU driver, custom picom config |
 | Screen never locks | `dwm-quickshell-controlcenter power-status`, `pgrep -a light-locker`, `xset q` | Idle lock and DPMS are off by default; suspend from the power menu does not lock first |
 | Monitor layout wrong after login | `xrandr --listmonitors`, `dwm-display-setup status`, `/etc/X11/xorg.conf.d/90-dwm-titus-display.conf` | Stale Xorg fragment; `dwm-display-setup rollback` restores (root) |
+| "<app> is not responding" notification | `ps -o pid,stat,wchan:30,cmd -p <pid>`, `/proc/<pid>/status`, journal around the time, `dwm: client ... hung` lines in `~/.xsession-errors` | App busy on purpose (game, VM, export), stopped process (`T` state), waiting on disk or network (`D` state), real deadlock; per-class opt-out in `~/.config/dwm-titus/hang-ignore` |
 | Process crashed | `coredumpctl info <pid>`, journal around the timestamp, `free -h` and OOM kills | `/usr/local/bin/dwm` is a local build, so Fedora debuginfod has no symbols for it; other Fedora packages resolve through `DEBUGINFOD_URLS` |
 
 ## Reporting upstream

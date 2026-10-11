@@ -23,6 +23,7 @@ dwm-display-setup detect
 dwm-xdg-autostart snapshot
 dwm-quickshell-controlcenter power-status
 dwm-desktop-update data-directories
+dwm-agent status
 ```
 
 Not read-only despite the name: plain `dwm-settings-wallpaper status` and
@@ -61,6 +62,20 @@ Settings UI. Use the plain `apply` forms from the command line.
 | `dwm-screenshot` | `screen`, `full`, `gui` (region), `clip` (region to clipboard) |
 | `dwm-status` | writes the root window name (power and volume) |
 | `webapp-create`, `webapp-launch` | create or launch web-app windows; pass the browser command explicitly to `webapp-create` |
+
+## AI assist
+
+| Helper | Use |
+|---|---|
+| `dwm-agent` | `setup` (pick Codex, OpenCode or Gemini CLI, install it with mise, log in, choose the switches), `default [name]`, `install <name>`, `login`, `link-skills`, `status`; with no subcommand opens the agent in a terminal |
+| `dwm-agent-diagnose` | `crash <pid> ...`, `hang <window> ...`, `window` (click a window); opens the agent with this skill's debug prompt |
+| `dwm-crash-watch` | started by autostart; offers "Diagnose with AI" when one of the user's programs dumps core |
+| `dwm-hang-event` | run by dwm when a window stops or starts answering `_NET_WM_PING` |
+
+Switches live in `~/.config/dwm-titus/`: `agent` (chosen agent),
+`hang-detection` (exists = on, off by default), `crash-notifications-off`
+(exists = off), `hang-ignore` (one window class per line). dwm reads
+`hang-detection` every 5 seconds, so changes need no restart.
 
 ## System and updates (ask first)
 
