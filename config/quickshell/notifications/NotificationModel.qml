@@ -60,7 +60,7 @@ Scope {
     function dismissNonCriticalPopups() {
         const current = root.notifications.slice();
         for (const item of current) {
-            if (item.urgencyName !== "critical") root.closeItem(item, root.hasActions(item));
+            if (item.urgencyName !== "critical") root.closeItem(item, false);
         }
     }
 
@@ -190,7 +190,7 @@ Scope {
         root.addHistory(item);
 
         if (root.popupSuppressed && item.urgencyName !== "critical") {
-            if (actions.length === 0) notification.expire();
+            notification.expire();
             return;
         }
 
@@ -200,12 +200,14 @@ Scope {
         root.notifications = candidates.slice(0, root.maxVisible);
 
         for (const overflowItem of overflow) {
-            root.closeItem(overflowItem, root.hasActions(overflowItem));
+            root.closeItem(overflowItem, root.keepsOpen(overflowItem));
         }
     }
 
-    function hasActions(item) {
-        return (item.actions || []).length > 0;
+    // A critical notification that asks for a decision stays open until it is
+    // answered or dismissed, even when its popup is pushed off screen.
+    function keepsOpen(item) {
+        return item.urgencyName === "critical" && (item.actions || []).length > 0;
     }
 
     function rememberActionable(key, notification) {
@@ -323,9 +325,9 @@ Scope {
             return;
         }
 
-        // An actionable notification that times out leaves the popup but stays
-        // open, so its actions remain available from the history.
-        if (expired && root.hasActions(item)) {
+        // Leaves the popup list but stays open, so its actions remain
+        // available from the history.
+        if (expired && root.keepsOpen(item)) {
             return;
         }
 

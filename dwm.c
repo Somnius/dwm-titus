@@ -329,6 +329,7 @@ static void run(void);
 static long long hangnow(void);
 static int hangdetectionenabled(void);
 static void hangcheck(void);
+static long long hangwait(void);
 static void hangevent(Client *c, const char *state);
 static void hangpong(Window w);
 static int pingclient(Client *c);
@@ -2871,8 +2872,8 @@ run(void)
 		}
 
 		/* Wake up for hang checks even when no events arrive. */
-		struct timeval hangtv = { HANG_PING_INTERVAL_MS / 1000,
-			(HANG_PING_INTERVAL_MS % 1000) * 1000 };
+		long long waitms = hangwait();
+		struct timeval hangtv = { waitms / 1000, (waitms % 1000) * 1000 };
 		int ready = select(maxfd + 1, &rfds, NULL, NULL, &hangtv);
 		if (ready < 0) {
 			if (errno == EINTR) continue; /* interrupted by signal */
@@ -2936,18 +2937,33 @@ pingclient(Client *c)
 	return 1;
 }
 
+static long long hanglastround;
+
+/* Milliseconds until the next hang check round is due. */
+static long long
+hangwait(void)
+{
+	long long left;
+
+	if (!hanglastround)
+		return 0;
+	left = hanglastround + HANG_PING_INTERVAL_MS - hangnow();
+	if (left < 0)
+		return 0;
+	return left > HANG_PING_INTERVAL_MS ? HANG_PING_INTERVAL_MS : left;
+}
+
 static void
 hangcheck(void)
 {
-	static long long lastround;
 	long long now = hangnow();
 	int enabled;
 	Monitor *m;
 	Client *c;
 
-	if (lastround && now - lastround < HANG_PING_INTERVAL_MS)
+	if (hanglastround && now - hanglastround < HANG_PING_INTERVAL_MS)
 		return;
-	lastround = now;
+	hanglastround = now;
 	enabled = hangdetectionenabled();
 
 	for (m = mons; m; m = m->next) {

@@ -8,6 +8,8 @@ can be updated with dnf without updating the whole desktop.
   links each skill into `~/.agents/skills`, preferring this system copy over
   the copy in `~/.local/share/dwm-titus/config/agents/skills`. Codex,
   OpenCode and Gemini CLI read skills from there.
+- After installing or removing the package, the links are switched the next
+  time `dwm-agent` opens an agent, or right away with `dwm-agent link-skills`.
 - The package never writes to home directories.
 
 Build locally (needs `rpm-build`):

@@ -151,6 +151,11 @@ link_skills() {
 	done
 }
 
+skills_linked() {
+	[[ -L $skills_target/dwm-titus-debug && -d $skills_target/dwm-titus-debug ]] &&
+		[[ $(readlink -f "$skills_target/dwm-titus-debug") == "$(readlink -f "$skills_source/dwm-titus-debug")" ]]
+}
+
 confirm() {
 	local question=$1 default=$2 reply
 	if [[ $default == yes ]]; then
@@ -220,7 +225,7 @@ status() {
 	done
 	printf 'crash-notifications\t%s\n' "$([[ -e $crash_off_toggle ]] && echo off || echo on)"
 	printf 'hang-detection\t%s\n' "$([[ -e $hang_toggle ]] && echo on || echo off)"
-	printf 'skills\t%s\n' "$([[ -L $skills_target/dwm-titus-debug ]] && echo linked || echo missing)"
+	printf 'skills\t%s\n' "$(skills_linked && echo linked || echo missing)"
 }
 
 set_toggle() {
@@ -274,6 +279,9 @@ launch() {
 		exec dwm-terminal -e "$0" setup
 	fi
 	agent_present "$agent" || die "$(agent_name "$agent") is not installed; run: dwm-agent install $agent"
+	# Relink when the skills moved, for example after the skills package was
+	# installed or removed.
+	skills_linked || link_skills >/dev/null 2>&1 || true
 
 	case $agent in
 	codex)

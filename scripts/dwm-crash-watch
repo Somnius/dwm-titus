@@ -34,7 +34,7 @@ announce() {
 			"Process crashed: $name" "Signal $signal. Click to diagnose with AI." 2>/dev/null) || exit 0
 		[[ $action == diagnose ]] || exit 0
 		# Crash details are separate argv words, never shell text.
-		setsid -f dwm-agent-diagnose crash "$pid" "$name" "$exe" "$signal" >/dev/null 2>&1
+		setsid -f dwm-agent-diagnose crash "$pid" "$name" "$exe" "$signal" </dev/null >/dev/null 2>&1
 	) &
 }
 
