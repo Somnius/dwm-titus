@@ -6,6 +6,8 @@ set -euo pipefail
 
 data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus
 skill=$data_dir/config/agents/skills/dwm-titus-debug/SKILL.md
+system_skill=/usr/share/dwm-titus/agents/skills/dwm-titus-debug/SKILL.md
+[[ -f $system_skill ]] && skill=$system_skill
 
 usage() {
 	cat <<'EOF'

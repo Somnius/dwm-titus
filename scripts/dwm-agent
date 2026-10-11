@@ -11,7 +11,9 @@ data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus
 agent_file=$config_dir/agent
 hang_toggle=$config_dir/hang-detection
 crash_off_toggle=$config_dir/crash-notifications-off
+# The dwm-titus-ai-skills package can ship newer skills than the desktop.
 skills_source=$data_dir/config/agents/skills
+[[ -d /usr/share/dwm-titus/agents/skills ]] && skills_source=/usr/share/dwm-titus/agents/skills
 # Codex, OpenCode and Gemini CLI all read skills from here.
 skills_target=$HOME/.agents/skills
 mise_shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
