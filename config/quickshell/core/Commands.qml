@@ -100,8 +100,8 @@ Singleton {
         return helperCommand("dwm-agent", action, args, true);
     }
 
-    function agentTerminalCommand(action) {
-        return helperCommand("dwm-terminal", "-e", agentCommand(action, []), true);
+    function agentTerminalCommand(action, args) {
+        return helperCommand("dwm-terminal", "-e", agentCommand(action, args), true);
     }
 
     function defaultsHelperCommand(action, args) {

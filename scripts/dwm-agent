@@ -22,7 +22,8 @@ usage() {
 	cat <<'EOF'
 Usage: dwm-agent [--inline] [--prompt TEXT]
        dwm-agent default [codex|opencode|gemini]
-       dwm-agent setup
+       dwm-agent setup [codex|opencode|gemini]
+       dwm-agent list
        dwm-agent install <codex|opencode|gemini>
        dwm-agent login [codex|opencode|gemini]
        dwm-agent link-skills
@@ -52,15 +53,6 @@ agent_name() {
 	esac
 }
 
-# mise tools to install for each agent, in order.
-agent_tools() {
-	case $1 in
-	codex) printf '%s\n' codex ;;
-	opencode) printf '%s\n' opencode ;;
-	gemini) printf '%s\n' node@lts npm:@google/gemini-cli ;;
-	esac
-}
-
 current_agent() {
 	local agent=''
 	[[ -f $agent_file ]] && read -r agent <"$agent_file" || true
@@ -85,39 +77,45 @@ set_default() {
 	mv -f "$agent_file.tmp" "$agent_file"
 }
 
-# Package installation is for Fedora only, like the rest of dwm-titus.
-require_fedora() {
-	local id=''
-	[[ -r /etc/os-release ]] && id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d "\"'")
-	[[ $id == fedora ]] || die "agent installation is supported on Fedora only (found '${id:-unknown}')"
-}
-
-ensure_mise() {
-	command -v mise >/dev/null 2>&1 && return 0
-	cat <<'EOF'
-mise is needed to install the agent. It comes from the official mise
-repository (https://mise.jdx.dev/rpm), added to dnf with its signing key.
-This runs:
-  sudo dnf config-manager addrepo --from-repofile=https://mise.jdx.dev/rpm/mise.repo
-  sudo dnf install mise
-EOF
-	confirm "Install mise now?" yes || die "mise is required; install it and run 'dwm-agent setup' again"
-	if ! dnf repolist --enabled 2>/dev/null | grep -q '^mise-repo'; then
-		sudo dnf config-manager addrepo --from-repofile=https://mise.jdx.dev/rpm/mise.repo
-	fi
-	sudo dnf install -y mise
-}
-
+# install-ai-agent owns installation (mise from its Fedora repository).
 install_agent() {
-	local agent=$1 tool
+	local agent=$1 installer=install-ai-agent
 	known_agent "$agent" || die "unknown agent '$agent'"
-	require_fedora
-	ensure_mise
-	while IFS= read -r tool; do
-		printf '==> mise use -g %s\n' "$tool"
-		mise use -g "$tool"
-	done < <(agent_tools "$agent")
+	[[ -x ${BASH_SOURCE[0]%/*}/install-ai-agent ]] && installer=${BASH_SOURCE[0]%/*}/install-ai-agent
+	"$installer" "$agent"
 	agent_present "$agent" || die "$(agent_name "$agent") did not install"
+}
+
+agent_version() {
+	use_mise_path
+	"$1" --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true
+}
+
+# Whether the agent has credentials. Each agent keeps them differently:
+#   codex     `codex login status` exits 0 when logged in
+#   opencode  provider credentials in ~/.local/share/opencode/auth.json
+#   gemini    Google login in ~/.gemini/oauth_creds.json, or an API key or
+#             Vertex AI settings in the environment
+agent_signed_in() {
+	local count
+	use_mise_path
+	case $1 in
+	codex)
+		if codex login status >/dev/null 2>&1; then echo yes; else echo no; fi
+		;;
+	opencode)
+		count=$(jq -r 'length' "${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json" 2>/dev/null) || count=0
+		if [[ $count =~ ^[0-9]+$ ]] && ((count > 0)); then echo yes; else echo no; fi
+		;;
+	gemini)
+		if [[ -s $HOME/.gemini/oauth_creds.json || -n ${GEMINI_API_KEY:-} || -n ${GOOGLE_API_KEY:-} || -n ${GOOGLE_GENAI_USE_VERTEXAI:-} ]]; then
+			echo yes
+		else
+			echo no
+		fi
+		;;
+	*) echo unknown ;;
+	esac
 }
 
 # Each agent's own login. Codex and OpenCode open the default browser; Gemini
@@ -168,25 +166,34 @@ confirm() {
 }
 
 setup() {
-	local agent choice i
+	local agent=${1:-} choice i state
 	printf 'Diagnose with AI: setup\n\n'
-	printf 'Which agent should dwm-titus open when you ask for a diagnosis?\n'
-	for i in "${!AGENTS[@]}"; do
-		agent=${AGENTS[$i]}
-		printf '  %d) %s%s\n' "$((i + 1))" "$(agent_name "$agent")" \
-			"$(agent_present "$agent" && printf ' (installed)')"
-	done
-	read -r -p "Choice [1-${#AGENTS[@]}]: " choice
-	if ! [[ $choice =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#AGENTS[@]})); then
-		die "no agent chosen"
+	if [[ -z $agent ]]; then
+		printf 'Which agent should dwm-titus open when you ask for a diagnosis?\n'
+		for i in "${!AGENTS[@]}"; do
+			agent=${AGENTS[$i]}
+			state='not installed'
+			if agent_present "$agent"; then
+				state=installed
+				[[ $(agent_signed_in "$agent") == yes ]] && state='installed, signed in'
+			fi
+			printf '  %d) %s (%s)\n' "$((i + 1))" "$(agent_name "$agent")" "$state"
+		done
+		read -r -p "Choice [1-${#AGENTS[@]}]: " choice
+		if ! [[ $choice =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#AGENTS[@]})); then
+			die "no agent chosen"
+		fi
+		agent=${AGENTS[$((choice - 1))]}
 	fi
-	agent=${AGENTS[$((choice - 1))]}
+	known_agent "$agent" || die "unknown agent '$agent' (choose: ${AGENTS[*]})"
 
 	agent_present "$agent" || install_agent "$agent"
 	set_default "$agent"
 	link_skills
 
-	if confirm "Log in to $(agent_name "$agent") now?" yes; then
+	if [[ $(agent_signed_in "$agent") == yes ]]; then
+		printf '%s is already signed in.\n' "$(agent_name "$agent")"
+	elif confirm "Log in to $(agent_name "$agent") now?" yes; then
 		login_agent "$agent"
 	fi
 
@@ -226,6 +233,22 @@ status() {
 	printf 'crash-notifications\t%s\n' "$([[ -e $crash_off_toggle ]] && echo off || echo on)"
 	printf 'hang-detection\t%s\n' "$([[ -e $hang_toggle ]] && echo on || echo off)"
 	printf 'skills\t%s\n' "$(skills_linked && echo linked || echo missing)"
+}
+
+# One line per agent: name, label, installed, version, signed in, default.
+list_agents() {
+	local agent default installed version signed
+	default=$(current_agent)
+	for agent in "${AGENTS[@]}"; do
+		installed=no version='' signed=no
+		if agent_present "$agent"; then
+			installed=yes
+			version=$(agent_version "$agent")
+			signed=$(agent_signed_in "$agent")
+		fi
+		printf 'agent\t%s\t%s\t%s\t%s\t%s\t%s\n' "$agent" "$(agent_name "$agent")" \
+			"$installed" "${version:--}" "$signed" "$([[ $agent == "$default" ]] && echo yes || echo no)"
+	done
 }
 
 set_toggle() {
@@ -310,7 +333,8 @@ case ${1:-} in
 default)
 	if (($# > 1)); then set_default "$2"; else current_agent; fi
 	;;
-setup) setup ;;
+setup) setup "${2:-}" ;;
+list) list_agents ;;
 install)
 	(($# == 2)) || die "usage: dwm-agent install <${AGENTS[*]}>"
 	install_agent "$2"

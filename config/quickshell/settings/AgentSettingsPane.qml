@@ -63,6 +63,29 @@ Flickable {
         }
     }
 
+    component Badge: Rectangle {
+        id: badge
+
+        required property string label
+        required property color stateColor
+
+        implicitWidth: badgeText.implicitWidth + (Theme.controlPaddingX * 2)
+        implicitHeight: Theme.pillHeight
+        color: Theme.transparent
+        border.color: badge.stateColor
+        border.width: Theme.controlBorderWidth
+        radius: Theme.pillRadius
+
+        UiText {
+            id: badgeText
+            anchors.centerIn: parent
+            text: badge.label.toUpperCase()
+            color: badge.stateColor
+            font.pixelSize: Theme.fontCaptionSize
+            font.bold: true
+        }
+    }
+
     ColumnLayout {
         id: content
         width: root.width
@@ -72,7 +95,7 @@ Flickable {
             Layout.fillWidth: true
             UiText {
                 Layout.fillWidth: true
-                text: "Diagnose with AI opens this agent when a program crashes or stops responding"
+                text: "Diagnose with AI opens the default agent when a program crashes or stops responding"
                 color: Theme.menuMutedText
                 elide: Text.ElideRight
             }
@@ -91,58 +114,104 @@ Flickable {
             wrapMode: Text.WordWrap
         }
 
-        SectionLabel { label: "Default agent" }
+        SectionLabel { label: "Agents" }
 
-        Rectangle {
+        UiText {
             Layout.fillWidth: true
-            Layout.preferredHeight: agentColumn.implicitHeight + Theme.spacingLg * 2
-            color: Theme.controlNormalFill
-            border.color: root.agentModel.agentInstalled ? Theme.success : Theme.warning
-            border.width: Theme.controlBorderWidth
-            radius: Theme.controlRadius
+            text: "Install and sign-in open in a terminal. Press Refresh when they finish to see the new state."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
 
-            ColumnLayout {
-                id: agentColumn
-                anchors.fill: parent
-                anchors.margins: Theme.spacingLg
-                spacing: Theme.spacingSm
+        UiText {
+            Layout.fillWidth: true
+            visible: root.agentModel.agents.length === 0
+            text: "No agents reported"
+            color: Theme.menuMutedText
+        }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    UiText {
-                        Layout.fillWidth: true
-                        text: root.agentModel.agentLabel(root.agentModel.agent)
-                        color: Theme.controlNormalText
-                        font.bold: true
-                    }
-                    UiText {
-                        visible: root.agentModel.hasAgent
-                        text: root.agentModel.agentInstalled ? "Installed" : "Not installed"
-                        color: root.agentModel.agentInstalled ? Theme.success : Theme.warning
-                        font.bold: true
-                    }
-                }
+        Repeater {
+            model: root.agentModel.agents
+            delegate: Rectangle {
+                id: agentCard
 
-                UiText {
-                    Layout.fillWidth: true
-                    text: root.agentModel.hasAgent
-                        ? "Set up picks a different agent and installs it if needed. Log in opens the agent's own sign-in."
-                        : "No agent is set up yet. Set up asks which agent to use, installs it and signs you in."
-                    color: Theme.menuMutedText
-                    wrapMode: Text.WordWrap
-                }
+                required property var modelData
+                readonly property bool signedIn: agentCard.modelData.signedIn === "yes"
 
-                RowLayout {
-                    Layout.fillWidth: true
+                Layout.fillWidth: true
+                Layout.preferredHeight: agentColumn.implicitHeight + Theme.spacingLg * 2
+                color: Theme.controlNormalFill
+                border.color: agentCard.modelData.isDefault ? Theme.controlSelectedBorder : Theme.controlNormalBorder
+                border.width: Theme.controlBorderWidth
+                radius: Theme.controlRadius
+
+                ColumnLayout {
+                    id: agentColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingLg
                     spacing: Theme.spacingSm
-                    ShellButton {
-                        label: "Set up..."
-                        onActivated: root.agentModel.openTerminal("setup")
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spacingSm
+
+                        UiText {
+                            text: agentCard.modelData.label
+                            color: Theme.controlNormalText
+                            font.bold: true
+                        }
+                        UiText {
+                            Layout.fillWidth: true
+                            text: agentCard.modelData.version.length > 0 ? agentCard.modelData.version : ""
+                            color: Theme.menuMutedText
+                            font.pixelSize: Theme.fontBodySmallSize
+                            elide: Text.ElideRight
+                        }
+                        Badge {
+                            label: agentCard.modelData.installed ? "Installed" : "Not installed"
+                            stateColor: agentCard.modelData.installed ? Theme.success : Theme.menuMutedText
+                        }
+                        Badge {
+                            visible: agentCard.modelData.installed
+                            label: agentCard.signedIn ? "Signed in"
+                                : agentCard.modelData.signedIn === "no" ? "Not signed in" : "Sign-in unknown"
+                            stateColor: agentCard.signedIn ? Theme.success : Theme.warning
+                        }
+                        Badge {
+                            visible: agentCard.modelData.isDefault
+                            label: "Default"
+                            stateColor: Theme.accent
+                        }
                     }
-                    ShellButton {
-                        label: "Log in..."
-                        enabled: root.agentModel.hasAgent
-                        onActivated: root.agentModel.openTerminal("login")
+
+                    Flow {
+                        Layout.fillWidth: true
+                        visible: installButton.visible || signInButton.visible || defaultButton.visible
+                        spacing: Theme.spacingSm
+
+                        ShellButton {
+                            id: installButton
+                            visible: !agentCard.modelData.installed
+                            label: "Install..."
+                            accessibleDescription: "Install " + agentCard.modelData.label
+                                + ", make it the default and sign in, in a terminal"
+                            onActivated: root.agentModel.openTerminal("setup", agentCard.modelData.name)
+                        }
+                        ShellButton {
+                            id: signInButton
+                            visible: agentCard.modelData.installed && !agentCard.signedIn
+                            label: "Sign in..."
+                            accessibleDescription: "Sign in to " + agentCard.modelData.label + " in a terminal"
+                            onActivated: root.agentModel.openTerminal("login", agentCard.modelData.name)
+                        }
+                        ShellButton {
+                            id: defaultButton
+                            visible: agentCard.modelData.installed && !agentCard.modelData.isDefault
+                            enabled: !root.agentModel.busy
+                            label: "Make default"
+                            accessibleDescription: "Open " + agentCard.modelData.label + " for Diagnose with AI"
+                            onActivated: root.agentModel.makeDefault(agentCard.modelData.name)
+                        }
                     }
                 }
             }
@@ -171,7 +240,7 @@ Flickable {
             Layout.fillWidth: true
             text: root.agentModel.skills === "linked"
                 ? "Diagnosis skills: linked"
-                : "Diagnosis skills: missing. Set up links them again."
+                : "Diagnosis skills: missing. Installing an agent links them, or run: dwm-agent link-skills"
             color: root.agentModel.skills === "linked" ? Theme.success : Theme.warning
             wrapMode: Text.WordWrap
         }

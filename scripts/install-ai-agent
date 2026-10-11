@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Install an AI coding agent for "Diagnose with AI" through mise, the way
+# Omarchy does. mise itself comes from its official Fedora repository.
+set -euo pipefail
+
+AGENTS=(codex opencode gemini)
+MISE_REPO_URL=https://mise.jdx.dev/rpm/mise.repo
+
+usage() {
+	cat <<EOF
+Usage: install-ai-agent [--dry-run] <codex|opencode|gemini>
+
+Install the agent for the current user with mise (mise use -g). When mise is
+missing, its official repository ($MISE_REPO_URL) is added to dnf and mise
+is installed with sudo first.
+
+  codex     OpenAI Codex CLI          (mise: codex)
+  opencode  OpenCode                  (mise: opencode)
+  gemini    Google Gemini CLI         (mise: node@lts, npm:@google/gemini-cli)
+
+Options:
+  --dry-run  Print what would be installed and exit.
+  -h, --help Show this help.
+EOF
+}
+
+die() {
+	printf 'install-ai-agent: %s\n' "$*" >&2
+	exit 1
+}
+
+# mise tools for each agent, in install order.
+agent_tools() {
+	case $1 in
+	codex) printf '%s\n' codex ;;
+	opencode) printf '%s\n' opencode ;;
+	gemini) printf '%s\n' node@lts npm:@google/gemini-cli ;;
+	*) return 1 ;;
+	esac
+}
+
+dry_run=false
+agent=''
+while (($#)); do
+	case $1 in
+	--dry-run) dry_run=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		usage >&2
+		exit 2
+		;;
+	*)
+		[[ -z $agent ]] || die "only one agent at a time"
+		agent=$1
+		;;
+	esac
+	shift
+done
+[[ -n $agent ]] || {
+	usage >&2
+	exit 2
+}
+agent_tools "$agent" >/dev/null || die "unknown agent '$agent' (choose: ${AGENTS[*]})"
+
+if [[ $(id -u) -eq 0 ]]; then
+	die "run as the desktop user, not as root"
+fi
+
+# Package installation is for Fedora only, like the rest of dwm-titus.
+os_id=''
+[[ -r /etc/os-release ]] && os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d "\"'")
+[[ $os_id == fedora ]] || die "supported on Fedora only (found '${os_id:-unknown}')"
+
+if $dry_run; then
+	command -v mise >/dev/null 2>&1 || printf 'would add %s and dnf install mise\n' "$MISE_REPO_URL"
+	while IFS= read -r tool; do
+		printf 'would run: mise use -g %s\n' "$tool"
+	done < <(agent_tools "$agent")
+	exit 0
+fi
+
+if ! command -v mise >/dev/null 2>&1; then
+	printf '==> Adding the mise repository and installing mise (needs sudo)\n'
+	if ! dnf repolist --enabled 2>/dev/null | grep -q '^mise-repo'; then
+		sudo dnf config-manager addrepo --from-repofile="$MISE_REPO_URL"
+	fi
+	sudo dnf install -y mise
+fi
+
+while IFS= read -r tool; do
+	printf '==> mise use -g %s\n' "$tool"
+	mise use -g "$tool"
+done < <(agent_tools "$agent")
+
+shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
+PATH=$shims:$PATH command -v "$agent" >/dev/null 2>&1 || die "$agent did not install"
+printf '==> %s is installed\n' "$agent"
