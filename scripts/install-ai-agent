@@ -3,12 +3,12 @@
 # Omarchy does. mise itself comes from its official Fedora repository.
 set -euo pipefail
 
-AGENTS=(codex opencode gemini)
+AGENTS=(codex opencode gemini claude cursor-agent hermes)
 MISE_REPO_URL=https://mise.jdx.dev/rpm/mise.repo
 
 usage() {
 	cat <<EOF
-Usage: install-ai-agent [--dry-run] <codex|opencode|gemini>
+Usage: install-ai-agent [--dry-run] <codex|opencode|gemini|claude|cursor-agent|hermes>
 
 Install the agent for the current user with mise (mise use -g). When mise is
 missing, its official repository ($MISE_REPO_URL) is added to dnf and mise
@@ -17,6 +17,9 @@ is installed with sudo first.
   codex     OpenAI Codex CLI          (mise: codex)
   opencode  OpenCode                  (mise: opencode)
   gemini    Google Gemini CLI         (mise: node@lts, npm:@google/gemini-cli)
+  claude    Claude Code               (mise: claude)
+  cursor-agent Cursor CLI             (mise: cursor-agent)
+  hermes    Hermes Agent              (mise: uv, pipx:hermes-agent on Python 3.13)
 
 Options:
   --dry-run  Print what would be installed and exit.
@@ -35,6 +38,11 @@ agent_tools() {
 	codex) printf '%s\n' codex ;;
 	opencode) printf '%s\n' opencode ;;
 	gemini) printf '%s\n' node@lts npm:@google/gemini-cli ;;
+	claude) printf '%s\n' claude ;;
+	cursor-agent) printf '%s\n' cursor-agent ;;
+	# Hermes pins Python 3.11-3.13, so uv builds it a private environment on
+	# its own Python 3.13 (see UV_PYTHON below) instead of the system one.
+	hermes) printf '%s\n' uv 'pipx:hermes-agent[extras=all]' ;;
 	*) return 1 ;;
 	esac
 }
@@ -92,7 +100,10 @@ fi
 
 while IFS= read -r tool; do
 	printf '==> mise use -g %s\n' "$tool"
-	mise use -g "$tool"
+	case $tool in
+	pipx:hermes-agent*) UV_PYTHON=3.13 mise use -g "$tool" ;;
+	*) mise use -g "$tool" ;;
+	esac
 done < <(agent_tools "$agent")
 
 shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims

@@ -67,7 +67,8 @@ Settings UI. Use the plain `apply` forms from the command line.
 
 | Helper | Use |
 |---|---|
-| `dwm-agent` | `setup` (pick Codex, OpenCode or Gemini CLI, install it with mise, log in, choose the switches), `default [name]`, `install <name>`, `login`, `link-skills`, `status`; with no subcommand opens the agent in a terminal |
+| `dwm-agent` | `setup [name]` (pick Codex, OpenCode, Gemini CLI, Claude Code, Cursor CLI or Hermes, install it, sign in, choose the switches), `list` (installed, version, signed in, default per agent), `default [name]`, `install <name>`, `login [name]`, `link-skills`, `status`, `set <crash-notifications\|hang-detection> <on\|off>`; with no subcommand opens the agent in a terminal |
+| `install-ai-agent` | `<name>` installs one agent with mise (mise itself from its Fedora repository, with sudo); `--dry-run` prints the steps |
 | `dwm-agent-diagnose` | `crash <pid> ...`, `hang <window> ...`, `window` (click a window); opens the agent with this skill's debug prompt |
 | `dwm-crash-watch` | started by autostart; offers "Diagnose with AI" when one of the user's programs dumps core |
 | `dwm-hang-event` | run by dwm when a window stops or starts answering `_NET_WM_PING` |

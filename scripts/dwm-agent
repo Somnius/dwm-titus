@@ -4,7 +4,7 @@
 # skill so every agent follows the same steps.
 set -euo pipefail
 
-AGENTS=(codex opencode gemini)
+AGENTS=(codex opencode gemini claude cursor-agent hermes)
 
 config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus
 data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus
@@ -14,8 +14,10 @@ crash_off_toggle=$config_dir/crash-notifications-off
 # The dwm-titus-ai-skills package can ship newer skills than the desktop.
 skills_source=$data_dir/config/agents/skills
 [[ -d /usr/share/dwm-titus/agents/skills ]] && skills_source=/usr/share/dwm-titus/agents/skills
-# Codex, OpenCode and Gemini CLI all read skills from here.
+# Codex, OpenCode and Gemini CLI read skills from ~/.agents/skills; Claude
+# Code, Cursor CLI and Hermes mainly from their own folders.
 skills_target=$HOME/.agents/skills
+skills_targets=("$skills_target" "$HOME/.claude/skills" "$HOME/.cursor/skills" "$HOME/.hermes/skills")
 mise_shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
 
 usage() {
@@ -50,6 +52,9 @@ agent_name() {
 	codex) printf 'Codex' ;;
 	opencode) printf 'OpenCode' ;;
 	gemini) printf 'Gemini CLI' ;;
+	claude) printf 'Claude Code' ;;
+	cursor-agent) printf 'Cursor CLI' ;;
+	hermes) printf 'Hermes Agent' ;;
 	esac
 }
 
@@ -96,8 +101,11 @@ agent_version() {
 #   opencode  provider credentials in ~/.local/share/opencode/auth.json
 #   gemini    Google login in ~/.gemini/oauth_creds.json, or an API key or
 #             Vertex AI settings in the environment
+#   claude    `claude auth status` exits 0 when logged in
+#   cursor    `cursor-agent status` prints "Logged in as ..."
+#   hermes    `hermes auth list` lists "<provider> (N credentials):" blocks
 agent_signed_in() {
-	local count
+	local count output
 	use_mise_path
 	case $1 in
 	codex)
@@ -113,6 +121,19 @@ agent_signed_in() {
 		else
 			echo no
 		fi
+		;;
+	claude)
+		if claude auth status >/dev/null 2>&1; then echo yes; else echo no; fi
+		;;
+	# Read the whole output first: `hermes auth list` exits nonzero even when
+	# it lists credentials, which pipefail would count as a failed check.
+	cursor-agent)
+		output=$(cursor-agent status 2>/dev/null) || true
+		if grep -q 'Logged in as' <<<"$output"; then echo yes; else echo no; fi
+		;;
+	hermes)
+		output=$(hermes auth list 2>/dev/null) || true
+		if grep -qE '\([0-9]+ credentials?\)' <<<"$output"; then echo yes; else echo no; fi
 		;;
 	*) echo unknown ;;
 	esac
@@ -131,21 +152,26 @@ login_agent() {
 		printf 'finish in the browser, then type /quit.\n'
 		gemini
 		;;
+	claude) claude auth login ;;
+	cursor-agent) cursor-agent login ;;
+	hermes) hermes setup ;;
 	esac
 }
 
 link_skills() {
-	local skill name target
+	local skill name target dir
 	[[ -d $skills_source ]] || die "no skills in $skills_source"
-	mkdir -p "$skills_target"
-	for skill in "$skills_source"/*/; do
-		name=$(basename "$skill")
-		target=$skills_target/$name
-		if [[ -e $target && ! -L $target ]]; then
-			printf 'Keeping %s; it is not a link made by dwm-titus.\n' "$target" >&2
-			continue
-		fi
-		ln -sfn "${skill%/}" "$target"
+	for dir in "${skills_targets[@]}"; do
+		mkdir -p "$dir"
+		for skill in "$skills_source"/*/; do
+			name=$(basename "$skill")
+			target=$dir/$name
+			if [[ -e $target && ! -L $target ]]; then
+				printf 'Keeping %s; it is not a link made by dwm-titus.\n' "$target" >&2
+				continue
+			fi
+			ln -sfn "${skill%/}" "$target"
+		done
 	done
 }
 
@@ -318,6 +344,24 @@ launch() {
 	gemini)
 		command=(gemini --yolo)
 		[[ -n $prompt ]] && command+=(--prompt-interactive "$prompt")
+		;;
+	claude)
+		command=(claude --permission-mode auto)
+		[[ -n $prompt ]] && command+=(-- "$prompt")
+		;;
+	cursor-agent)
+		# --yolo covers commands only; the workspace trust prompt has its own
+		# flag. Naming the agent subcommand keeps a one-word prompt such as
+		# "login" from running that subcommand instead.
+		command=(cursor-agent --yolo --trust)
+		[[ -n $prompt ]] && command+=(agent -- "$prompt")
+		;;
+	hermes)
+		if [[ -n $prompt ]]; then
+			command=(env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=$prompt")
+		else
+			command=(hermes --yolo)
+		fi
 		;;
 	esac
 
